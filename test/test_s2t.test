@@ -1,0 +1,51 @@
+<launch>
+    <!-- location of the speech history for the session /-->
+    <param    name ="/ros_speech2text/speech_history"  value="$(find ros_speech2text)/test/test_speech_history" />
+
+    <!-- sets env var for google apis to work /-->
+    <env      name ="GOOGLE_APPLICATION_CREDENTIALS"   value="$(find ros_speech2text)/GCloud_SpeechAPI_Cred" />
+
+    <!-- starts node for asynchronous s2t /-->
+    <node pkg="ros_speech2text" name="ros_speech2text" type="ros_s2t.py" output="screen">
+        <!-- device ID of audio source. If unknown, launch once and get param /ros_speech2text/available_audio_device /-->
+        <param    name ="audio_device_idx" value="0"  />
+
+        <!-- rate for your audio capturing device /-->
+        <param    name ="audio_rate"      value="44100" />
+
+        <!-- param for static thresholding /-->
+        <param    name ="audio_threshold" value="700"   />
+
+        <!-- param for using async API call /-->
+        <param    name ="async_mode" value="True"  />
+
+        <!-- param for dynamic thresholding /-->
+        <param    name ="enable_dynamic_threshold" value="True"  />
+
+        <!-- activate audio recording when volume is this percentage higher than average /-->
+        <param    name ="audio_dynamic_percentage" value="50"  />
+
+        <!-- for x consecutive frames all louder than the percentage we specified, activate recording /-->
+        <param    name ="audio_dynamic_frame" value="3"  />
+
+        <!-- min value of average volume to prevent system from being too sensitive in case of constantly quiet environments /-->
+        <param    name ="audio_min_avg" value="100"  />
+
+        <!-- param for showing debug information /-->
+        <param    name ="verbosity" value="False"  />
+
+        <!-- param for cleaning up audio and transcript data after node ends /-->
+        <param    name ="cleanup" value="False"  />
+
+        <!-- param for unit and functional testing /-->
+        <param    name ="testing" value="True"  />
+
+        <!-- list of context clues for speech recognition /-->
+        <rosparam param="speech_context">
+            ["screwdriver","left","right","yes","no","baxter","screw","table","hammer","board","can","you","tuck","untuck","give","pass","hand","move","help"]
+        </rosparam>
+    </node>
+
+    <test test-name="test_ros_speech2text" pkg="ros_speech2text" type="test_speech_detection.py" />
+
+</launch>
