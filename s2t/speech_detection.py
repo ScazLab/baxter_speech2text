@@ -197,7 +197,7 @@ class SpeechDetector:
                 return None, None, None
 
             snd_data = np.frombuffer(
-                stream.read(self.chunk_size, exception_on_overflow=False),
+                stream.read(self.chunk_size),
                 dtype=BUFFER_NP_TYPE)
             self.treat_chunk(snd_data)
 

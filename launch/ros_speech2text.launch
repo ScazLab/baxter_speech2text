@@ -9,13 +9,19 @@
         <!-- <param    name ="speech_history"  value="~/.ros/ros_speech2text/speech_history" /> -->
 
         <!-- device ID of audio source. If unknown, launch once and get param /ros_speech2text/available_audio_device /-->
-        <param    name ="audio_device_name" value="Samson" />
+        <param    name ="audio_device_name" value="USB Device 0x46d:0x825: Audio (hw:3,0)" />
 
         <!-- device name of audio source. Only used if audio_device_idx is not set. Uses the first device that contains the given name (case insensitive). /-->
         <!-- <param    name ="audio_device_idx" value="name" /> -->
 
         <!-- rate for your audio capturing device /-->
-        <param    name ="audio_rate" value="44100" />
+        <param    name ="audio_rate" value="16000" />
+
+        <!-- DeepSpeech config /-->
+        <!-- <param    name ="deepspeech_model" value="~/deepspeech/models/output_graph.pb" /> /-->
+        <!-- <param    name ="deepspeech_alphabet" value="~/deepspeech/models/alphabet.txt" /> /-->
+        <!-- <param    name ="deepspeech_language_model" value="~/deepspeech/models/lm.binary" /> /-->
+        <!-- <param    name ="deepspeech_trie" value="~/deepspeech/models/trie" /> /-->
 
         <!-- param for static thresholding /-->
         <!-- <param    name ="audio_threshold" value="700"   /> -->
