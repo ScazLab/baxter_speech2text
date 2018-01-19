@@ -7,8 +7,6 @@ from threading import Thread
 
 import wave
 import pyaudio
-from google.cloud import speech
-from google.gax.errors import RetryError
 
 import rospy
 from std_msgs.msg import String, Header
@@ -16,8 +14,36 @@ from ros_speech2text.msg import transcript, event
 
 from .speech_detection import SpeechDetector
 
+from deepspeech.model import Model
+import scipy.io.wavfile as wav
+from timeit import default_timer as timer
 
 FORMAT = pyaudio.paInt16
+
+# TODO: move this to some configuration file maybe.
+# Beam width used in the CTC decoder when building candidate transcriptions
+BEAM_WIDTH = 500
+
+# The alpha hyperparameter of the CTC decoder. Language Model weight
+LM_WEIGHT = 1.75
+
+# The beta hyperparameter of the CTC decoder. Word insertion weight (penalty)
+WORD_COUNT_WEIGHT = 1.00
+
+# Valid word insertion weight. This is used to lessen the word insertion penalty
+# when the inserted word is part of the vocabulary
+VALID_WORD_COUNT_WEIGHT = 1.00
+
+
+# These constants are tied to the shape of the graph used (changing them changes
+# the geometry of the first layer), so make sure you use the same constants that
+# were used during training
+
+# Number of MFCC features to use
+N_FEATURES = 26
+
+# Size of the context window used for producing timesteps in the input vector
+N_CONTEXT = 9
 
 
 def list_audio_devices(pyaudio_handler):
@@ -68,7 +94,26 @@ class SpeechRecognizer(object):
         )
         self._init_stream()
         self._init_csv()
-        self.speech_client = speech.Client()
+        
+        model = rospy.get_param(self.node_name + '/deepspeech_model', "~/deepspeech/models/output_graph.pb")
+        alphabet = rospy.get_param(self.node_name + '/deepspeech_alphabet', "~/deepspeech/models/alphabet.txt")
+        lm = rospy.get_param(self.node_name + '/deepspeech_language_model', "~/deepspeech/models/lm.binary")
+        trie = rospy.get_param(self.node_name + '/deepspeech_trie', "~/deepspeech/models/trie")
+
+        print('Loading model from file %s' % (model))
+        model_load_start = timer()
+        self.ds = Model(model, N_FEATURES, N_CONTEXT, alphabet, BEAM_WIDTH)
+        model_load_end = timer() - model_load_start
+        print('Loaded model in %0.3fs.' % (model_load_end))
+
+        if lm is not "" and trie is not "":
+            print('Loading language model from files %s %s' % (lm, trie))
+            lm_load_start = timer()
+            self.ds.enableDecoderWithLM(alphabet, lm, trie, LM_WEIGHT,
+                                   WORD_COUNT_WEIGHT, VALID_WORD_COUNT_WEIGHT)
+            lm_load_end = timer() - lm_load_start
+            print('Loaded language model in %0.3fs.' % (lm_load_end))
+
         self.run()
 
     def _init_history_directory(self):
@@ -118,10 +163,6 @@ class SpeechRecognizer(object):
 
     def run(self):
         sn = 0
-        if self.async:
-            self.operation_queue = []
-            thread = Thread(target=self.check_operation)
-            thread.start()
         while not rospy.is_shutdown():
             aud_data, start_time, end_time = self.speech_detector.get_next_utter(
                 self.stream, *self.get_utterance_start_end_callbacks(sn))
@@ -129,13 +170,9 @@ class SpeechRecognizer(object):
                 rospy.loginfo("No more data, exiting...")
                 break
             self.record_to_file(aud_data, sn)
-            if self.async:
-                operation = self.recog(sn)
-                if operation is not None:  # TODO: Improve
-                    self.operation_queue.append([sn, operation, start_time, end_time])
-            else:
-                transc, confidence = self.recog(sn)
-                self.utterance_decoded(sn, transc, confidence, start_time, end_time)
+            transc = self.recog(sn)
+            confidence = 1.0 # TODO: can we get this???
+            self.utterance_decoded(sn, transc, confidence, start_time, end_time)
             sn += 1
         self.terminate()
 
@@ -234,51 +271,14 @@ class SpeechRecognizer(object):
         context = rospy.get_param(self.node_name + '/speech_context', [])
         path = self.utterance_file(utterance_id)
 
-        with io.open(path, 'rb') as audio_file:
-            content = audio_file.read()
-            audio_sample = self.speech_client.sample(
-                content,
-                source_uri=None,
-                encoding='LINEAR16',
-                sample_rate=self.sample_rate)
+        fs, audio = wav.read(path)
+        audio_length = len(audio) * ( 1 / 16000)
+        assert fs == 16000, "Only 16000Hz input WAV files are supported for now!"
 
-        if self.async:
-            try:
-                operation = self.speech_client.speech_api.async_recognize(
-                    sample=audio_sample, speech_context=context)
-                return operation
-            except (ValueError, RetryError):
-                rospy.logerr("Audio Segment too long. Unable to recognize")
-        else:
-            alternatives = self.speech_client.speech_api.sync_recognize(
-                sample=audio_sample, speech_context=context)
-            for alternative in alternatives:
-                return alternative.transcript, alternative.confidence
+        print('Running inference.')
+        inference_start = timer()
+        stt_result = self.ds.stt(audio, fs)
+        inference_end = timer() - inference_start
+        print('Inference took %0.3fs for %0.3fs audio file.' % (inference_end, audio_length))
 
-    def check_operation(self):
-        """
-        This function is intended to be run as a seperate thread that repeatedly
-        checks if any recog operation has finished.
-        The transcript returned is then published on screen of baxter and sent
-        to the ros topic with the custom message type 'transcript'.
-        """
-        while not rospy.is_shutdown():
-            try:
-                for op in self.operation_queue[:]:
-                    utterance_id, operation, start_time, end_time = op
-                    if operation.complete:
-                        for result in operation.results:
-                            self.utterance_decoded(
-                                utterance_id, result.transcript, result.confidence,
-                                start_time, end_time)
-                        self.operation_queue.remove(op)
-                    else:
-                        try:
-                            operation.poll()
-                        except ValueError:
-                            self.utterance_failed(utterance_id, start_time, end_time)
-                            self.operation_queue.remove(op)
-            except Exception as e:
-                rospy.logerr("Error in speech recognition thread: {}".format(e))
-                self.operation_queue = []
-            rospy.sleep(1)
+        return stt_result
