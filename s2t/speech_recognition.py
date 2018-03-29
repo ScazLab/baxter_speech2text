@@ -33,7 +33,7 @@ class SpeechRecognizer(object):
 
     TOPIC_BASE = '/speech_to_text'
 
-    class InvalidDeviceID(ValueError):
+    class InvalidDevice(ValueError):
         pass
 
     def __init__(self):
@@ -66,6 +66,9 @@ class SpeechRecognizer(object):
             n_silent=rospy.get_param(
                 self.node_name + '/n_silent_chunks', 10),
         )
+        if self.print_level > 0:
+            rospy.loginfo('Sample Rate: {}'.format(self.sample_rate))
+
         self._init_stream()
         self._init_csv()
         self.speech_client = speech.Client()
@@ -92,9 +95,9 @@ class SpeechRecognizer(object):
                                  for d in device_list
                                  ].index(True)
                 except ValueError:
-                    rospy.logerr(
-                        "No device found for name '%s', falling back to default."
-                        % input_name)
+                    self.terminate()
+                    raise self.InvalidDevice(
+                        "No device found for name '%s'." % input_name)
         try:
             rospy.loginfo("{} using device: {}".format(
                 self.node_name,
@@ -106,7 +109,7 @@ class SpeechRecognizer(object):
                 frames_per_buffer=self.speech_detector.chunk_size)
         except IOError:
             self.terminate()
-            raise self.InvalidDeviceID(
+            raise self.InvalidDevice(
                 'Invalid device ID: {}. Available devices listed in rosparam '
                 '/ros_speech2text/available_audio_device'.format(input_idx))
         self.sample_width = self.pa_handler.get_sample_size(FORMAT)
@@ -139,11 +142,15 @@ class SpeechRecognizer(object):
             sn += 1
         self.terminate()
 
-    def terminate(self, exitcode=0):
-        self.stream.close()
-        self.pa_handler.terminate()
-        self.csv_file.close()
-        if rospy.get_param(rospy.get_name() + '/cleanup', True):
+    def terminate(self):
+        if hasattr(self, "stream"):
+            self.stream.close()
+        if hasattr(self, "pa_handler"):
+            self.pa_handler.terminate()
+        if hasattr(self, "csv_file"):
+            self.csv_file.close()
+        if (hasattr(self, "history_dir") and
+                rospy.get_param(rospy.get_name() + '/cleanup', True)):
             shutil.rmtree(self.history_dir)
 
     def utterance_start(self, utterance_id):

@@ -11,6 +11,6 @@ if __name__ == '__main__':
     rospy.init_node('speech2text_engine', anonymous=True)
     try:
         recog = SpeechRecognizer()
-    except SpeechRecognizer.InvalidDeviceID as e:
+    except SpeechRecognizer.InvalidDevice as e:
         rospy.logerr(e.message)
         sys.exit(1)
