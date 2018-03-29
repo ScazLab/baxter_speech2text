@@ -12,7 +12,7 @@ catkin_python_setup()
 
 ## ROS messages, services and actions
 
-add_message_files(FILES transcript.msg event.msg)
+add_message_files(FILES transcript.msg event.msg status.msg)
 
 generate_messages(DEPENDENCIES std_msgs)
 catkin_package(
@@ -25,6 +25,7 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
+
 ## Test
 
 if(CATKIN_ENABLE_TESTING)
@@ -36,7 +37,6 @@ endif()
 
 install(PROGRAMS
   scripts/ros_s2t.py
-  scripts/listening_to_display.py
   ## scripts/ros_speech2text_sync.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
